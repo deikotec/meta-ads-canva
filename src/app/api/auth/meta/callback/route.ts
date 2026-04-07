@@ -4,19 +4,25 @@ import { cookies } from "next/headers";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
+  // Firebase App Hosting puede exponer 0.0.0.0:8080 como origin internamente.
+  // Usamos NEXT_PUBLIC_APP_URL cuando está definido y no es localhost.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const origin = appUrl && !appUrl.includes('localhost') ? appUrl.replace(/\/$/, '') : url.origin;
+
   const code = url.searchParams.get("code");
   const error = url.searchParams.get("error");
   
   if (error) {
-    return NextResponse.redirect(`${url.origin}/admin?error=auth_rejected`);
+    return NextResponse.redirect(`${origin}/admin?error=auth_rejected`);
   }
   
   if (!code) {
-    return NextResponse.redirect(`${url.origin}/admin?error=no_code`);
+    return NextResponse.redirect(`${origin}/admin?error=no_code`);
   }
 
   try {
-    const redirectUri = `${url.origin}/api/auth/meta/callback`;
+    const redirectUri = `${origin}/api/auth/meta/callback`;
+
     
     // 1. Canjear código por token corto
     const shortTokenRes = await MetaApi.exchangeCode(code, redirectUri);
