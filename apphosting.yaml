@@ -2,23 +2,78 @@
 # See https://firebase.google.com/docs/app-hosting/configure#cloud-run
 runConfig:
   minInstances: 0
-  # maxInstances: 100
-  # concurrency: 80
-  # cpu: 1
-  # memoryMiB: 512
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
 
 # Environment variables and secrets.
-# env:
-  # Configure environment variables.
-  # See https://firebase.google.com/docs/app-hosting/configure#user-defined-environment
-  # - variable: MESSAGE
-  #   value: Hello world!
-  #   availability:
-  #     - BUILD
-  #     - RUNTIME
+env:
+  # --- Firebase Public (Client + Build) ---
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyCjVLD4KMEcGsksJH83hf8gOCw8A2ZVTyw
+    availability:
+      - BUILD
+      - RUNTIME
 
-  # Grant access to secrets in Cloud Secret Manager.
-  # You can create secrets with the CLI command `firebase apphosting:secrets:set <secretName>`.
-  # See https://firebase.google.com/docs/app-hosting/configure#secret-parameters
-  # - variable: MY_SECRET
-  #   secret: mySecretRef
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: socialflow-2026.firebaseapp.com
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: socialflow-2026
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: socialflow-2026.firebasestorage.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "767649161029"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: 1:767649161029:web:2ec2092f14cc19afa2282c
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    value: G-YT46N8YJHF
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # --- App URL (dominio de producción) ---
+  - variable: NEXT_PUBLIC_APP_URL
+    value: https://socialflow-metads--socialflow-2026.us-central1.hosted.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # --- Meta / Facebook ---
+  - variable: META_CLIENT_ID
+    value: "440843458291017"
+    availability:
+      - RUNTIME
+
+  # --- Firebase Admin (servidor) - usar secrets para claves privadas ---
+  - variable: FIREBASE_CLIENT_EMAIL
+    value: firebase-adminsdk-fbsvc@socialflow-2026.iam.gserviceaccount.com
+    availability:
+      - RUNTIME
+
+  # FIREBASE_PRIVATE_KEY y META_CLIENT_SECRET se deben agregar como secrets
+  # via: firebase apphosting:secrets:set FIREBASE_PRIVATE_KEY
+  # y luego referenciar aquí:
+  # - variable: FIREBASE_PRIVATE_KEY
+  #   secret: FIREBASE_PRIVATE_KEY
+  # - variable: META_CLIENT_SECRET
+  #   secret: META_CLIENT_SECRET

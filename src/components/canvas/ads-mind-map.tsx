@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { ReactFlow, Background, Controls, Edge, Node, Position, Handle, useNodesState, useEdgesState } from "@xyflow/react";
 import '@xyflow/react/dist/style.css';
 
@@ -115,32 +115,6 @@ export function AdsMindMap({ clientName, selectedMetrics = ['spend', 'clicks', '
   const { nodes: initialNodes, edges: initialEdges } = useMemo(buildGraph, [campaigns, adSets, adsMetadata, adsMetrics]);
 
   const [openedAd, setOpenedAd] = useState<any | null>(null);
-  const [adPreviewHtml, setAdPreviewHtml] = useState<string | null>(null);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const [previewFormat, setPreviewFormat] = useState('INSTAGRAM_STANDARD');
-
-  const loadPreview = async (adId: string, format: string) => {
-    setIsLoadingPreview(true);
-    setAdPreviewHtml(null);
-    const res = await getAdPreviewAction(adId, format);
-    if (res.success && res.html) {
-      setAdPreviewHtml(res.html);
-    } else {
-      alert('No se pudo cargar la vista previa: ' + res.error);
-    }
-    setIsLoadingPreview(false);
-  };
-
-  // Auto-cargar preview en formato Instagram al abrir el modal
-  useEffect(() => {
-    if (openedAd?.ad?.id) {
-      setPreviewFormat('INSTAGRAM_STANDARD');
-      loadPreview(openedAd.ad.id, 'INSTAGRAM_STANDARD');
-    } else {
-      setAdPreviewHtml(null);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openedAd?.ad?.id]);
 
   return (
     <div className="w-full h-full relative">
@@ -233,20 +207,20 @@ export function AdsMindMap({ clientName, selectedMetrics = ['spend', 'clicks', '
         const results = getActionValue(metrics, ['onsite_conversion.messaging_conversation_started_7d', 'lead', 'purchase', 'offsite_conversion.fb_pixel_lead', 'link_click']);
         const cpr = getCostValue(metrics, ['onsite_conversion.messaging_conversation_started_7d', 'lead', 'purchase', 'offsite_conversion.fb_pixel_lead', 'link_click']);
 
-        // Detección de formato dinámico/flexible (solo para badge)
+        // Detección de formato dinámico/flexible (para badge)
         const assetFeed = ad.creative?.asset_feed_spec;
         const assetGroups = ad.creative?.creative_asset_groups_spec;
         const degreesFormat = ad.creative?.degrees_of_freedom_spec;
         const isFlexible = !!assetFeed || !!assetGroups || !!degreesFormat;
 
-        // Copy / Texto principal
-        let bodyTexts: string[] = [];
-        if (isFlexible && assetFeed?.bodies) {
-            bodyTexts = assetFeed.bodies.map((b: { text: string }) => b.text);
-        } else {
-            const txt = ad.creative?.body || ad.creative?.object_story_spec?.link_data?.message || ad.creative?.object_story_spec?.video_data?.message;
-            if (txt) bodyTexts.push(txt);
-        }
+        // Detección de carrusel estricto
+        const childAttachments = ad.creative?.object_story_spec?.link_data?.child_attachments || [];
+        const isCarousel = childAttachments.length > 0;
+
+        // Video e imagen de fallback
+        const singleVideoId = ad.creative?.video_id || ad.creative?.object_story_spec?.video_data?.video_id;
+        const fallbackImage = ad.creative?.image_url || ad.creative?.thumbnail_url;
+
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/40 backdrop-blur-sm">
@@ -259,20 +233,12 @@ export function AdsMindMap({ clientName, selectedMetrics = ['spend', 'clicks', '
              </button>
              
              <h2 className="text-xl font-bold mt-4 mb-1 text-zinc-900 pr-10">{ad.name}</h2>
-             <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 mb-3">
+             <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 mb-4">
                 <Activity className="w-3 h-3"/> {ad.status}
                 {isFlexible && (
                     <span className="ml-1 px-2 py-0.5 bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 rounded-full font-sans font-medium">✦ Advantage+ Creative</span>
                 )}
              </div>
-             {isFlexible && (
-                 <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                     <p className="text-[11px] text-amber-700 leading-relaxed">
-                         <strong>Formato Dinámico:</strong> Meta mezcla automáticamente tus {' '}
-                         <strong>10 recursos</strong> (fotos y videos) para crear combinaciones únicas por usuario — carrusel, imagen única o video. Solo el Administrador de Meta puede renderizar todas las combinaciones.
-                     </p>
-                 </div>
-             )}
 
              {/* Instagram permalink: link directo al post de referencia */}
              {ad.creative?.instagram_permalink_url && (
@@ -284,69 +250,36 @@ export function AdsMindMap({ clientName, selectedMetrics = ['spend', 'clicks', '
                  >
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
                     Ver post de referencia en Instagram →
-                 </a>
-             )}
-
-
-
-
-             {/* Action Button: Load Meta Ad Preview */}
-             <div className="mb-4">
-                 <div className="flex items-center gap-2 mb-2">
-                     <span className="text-[11px] font-medium text-zinc-500">Formato de Vista: </span>
-                     <div className="flex flex-wrap gap-1">
-                         {[
-                             { label: '📱 Feed Mobile', value: 'MOBILE_FEED_STANDARD' },
-                             { label: '🖵 Feed Desktop', value: 'DESKTOP_FEED_STANDARD' },
-                             { label: '📷 Instagram', value: 'INSTAGRAM_STANDARD' },
-                             { label: '⏰ Story IG', value: 'INSTAGRAM_STORY' },
-                             { label: '🎬 Reels', value: 'INSTAGRAM_REELS' },
-                         ].map(({ label, value }) => (
-                             <button
-                                 key={value}
-                                 onClick={() => { setPreviewFormat(value); loadPreview(ad.id, value); }}
-                                 className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${
-                                     previewFormat === value
-                                         ? 'bg-blue-600 text-white border-blue-600'
-                                         : 'bg-white text-zinc-600 border-zinc-200 hover:border-blue-300'
-                                 }`}
-                             >
-                                 {label}
-                             </button>
+                             {/* Creativo del anuncio */}
+             {isCarousel ? (
+                 <div className="mb-6">
+                     <div className="flex items-center justify-between mb-2">
+                         <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Carrusel</h4>
+                         <span className="text-[10px] text-zinc-400">{childAttachments.length} tarjetas</span>
+                     </div>
+                     <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
+                         {childAttachments.map((item: any, i: number) => (
+                             <div key={i} className="min-w-[80%] aspect-square bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 snap-center shrink-0">
+                                 {item.video_id ? (
+                                     <iframe src={`https://www.facebook.com/video/embed?video_id=${item.video_id}`} frameBorder="0" allowFullScreen className="w-full h-full" />
+                                 ) : (
+                                     <img src={item.image_url} alt={`Tarjeta ${i + 1}`} className="w-full h-full object-cover" />
+                                 )}
+                             </div>
                          ))}
                      </div>
                  </div>
-
-                 {!adPreviewHtml ? (
-                     <button
-                         onClick={() => loadPreview(ad.id, previewFormat)}
-                         disabled={isLoadingPreview}
-                         className="w-full flex items-center justify-center gap-2 py-3 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl font-medium transition-colors text-sm disabled:opacity-60"
-                     >
-                         <MonitorPlay className="w-4 h-4" />
-                         {isLoadingPreview ? 'Cargando simulador...' : 'Ver Previsualización Real de Facebook'}
-                     </button>
-                 ) : (
-                     <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-white">
-                         <div className="bg-zinc-50 py-2 px-3 flex justify-between items-center border-b border-zinc-200">
-                             <span className="text-xs font-semibold text-zinc-500">📱 Simulador Oficial de Meta</span>
-                             <div className="flex items-center gap-2">
-                                 <button
-                                     onClick={() => loadPreview(ad.id, previewFormat)}
-                                     disabled={isLoadingPreview}
-                                     className="text-[10px] text-blue-500 hover:text-blue-700 py-1 px-2 transition-colors disabled:opacity-40"
-                                 >
-                                     {isLoadingPreview ? '...' : '↻ Recargar'}
-                                 </button>
-                                 <button onClick={() => setAdPreviewHtml(null)} className="text-xs text-zinc-400 hover:text-red-500 py-1 px-2 transition-colors">✕ Cerrar</button>
-                             </div>
-                         </div>
-                         <div className="w-full overflow-auto flex justify-center bg-white py-4 max-h-[540px]" dangerouslySetInnerHTML={{ __html: adPreviewHtml }} />
-                     </div>
-                 )}
-                 <p className="text-[10px] text-zinc-400 mt-1 text-center">Cambia el formato de arriba para ver distintas variaciones del anuncio flexible.</p>
-             </div>
-
+             ) : (
+                 <div className="w-full aspect-square bg-zinc-100 rounded-2xl overflow-hidden border border-zinc-200 mb-4">
+                     {singleVideoId ? (
+                         <iframe src={`https://www.facebook.com/video/embed?video_id=${singleVideoId}`} frameBorder="0" allowFullScreen className="w-full h-full" />
+                     ) : fallbackImage ? (
+                         <img src={fallbackImage} alt="Creativo" className="w-full h-full object-contain bg-black/5" />
+                     ) : (
+                         <div className="flex items-center justify-center h-full text-zinc-400 text-sm">Sin vista previa</div>
+                     )}
+                 </div>
+             )}
 
              <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Resultados Clave</h3>
 
