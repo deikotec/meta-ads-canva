@@ -217,11 +217,10 @@ export function AdsMindMap({ clientName, selectedMetrics = ['spend', 'clicks', '
         const childAttachments = ad.creative?.object_story_spec?.link_data?.child_attachments || [];
         const isCarousel = childAttachments.length > 0;
 
-        // Video e imagen de fallback (picture es el campo más confiable de Meta)
+        // Video e imagen de fallback (picture es el campo confiable de Meta en link_data)
         const singleVideoId = ad.creative?.video_id || ad.creative?.object_story_spec?.video_data?.video_id;
         const fallbackImage = ad.creative?.image_url
             || ad.creative?.object_story_spec?.link_data?.picture
-            || ad.creative?.object_story_spec?.link_data?.image_url
             || ad.creative?.object_story_spec?.video_data?.thumbnail_url
             || ad.creative?.thumbnail_url;
 
