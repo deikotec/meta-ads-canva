@@ -264,7 +264,7 @@ export const MetaApi = {
 
   // 18. Get Ads (metadata: status, creative thumbnail)
   getAds: async (targetId: string, accessToken: string, campaignIds?: string[]) => {
-    const fields = 'id,name,adset_id,campaign_id,status,creative{thumbnail_url,image_url,body,video_id,object_story_spec{link_data{picture,message,child_attachments{picture,video_id,description}},video_data{video_id,thumbnail_url,message}},asset_feed_spec{images{url,hash},videos{video_id,thumbnail_url},bodies{text}},instagram_permalink_url}';
+    const fields = 'id,name,adset_id,campaign_id,status,creative{thumbnail_url,image_url,body,video_id,object_story_spec{link_data{picture,message,child_attachments{picture,image_url,image_hash,video_id,name,description,call_to_action_type,link}},video_data{video_id,thumbnail_url,message}},asset_feed_spec{images{url,hash},videos{video_id,thumbnail_url},bodies{text}},instagram_permalink_url}';
     let filterStr = '';
     if (campaignIds && campaignIds.length > 0) {
         filterStr = `&filtering=[{"field":"campaign.id","operator":"IN","value":${JSON.stringify(campaignIds)}}]`;
