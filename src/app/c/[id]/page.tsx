@@ -34,6 +34,7 @@ export default async function CanvasPage({ params, searchParams }: { params: Pro
   return (
     <div className="w-screen h-screen bg-[#fafafa]">
         <AdsMindMap 
+          publicId={id}
           clientName={result.clientName}
           selectedMetrics={result.selectedMetrics || ['spend', 'clicks', 'impressions', 'cpc']}
           campaigns={result.campaigns}

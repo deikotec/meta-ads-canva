@@ -2,6 +2,7 @@
 
 import { adminDb } from "@/lib/firebase-admin";
 import { MetaApi } from "@/lib/meta";
+import { fetchCanvasMetadata, getCachedInsights } from "@/lib/canvas-data";
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
 
@@ -63,74 +64,70 @@ export async function createPublicCanvasAction(
 // Obtener datos consolidados para el mapa mental (Se ejecuta sólo en servidor)
 export async function getCanvasDataAction(publicId: string, datePreset: string = 'maximum') {
   try {
-    const doc = await adminDb.collection("public_canvas_links").doc(publicId).get();
-    if (!doc.exists) {
+    // Firestore solo se lee una vez; la metadata se cachea 1h y los insights según TTL adaptativo.
+    // Si SSR ya calentó la caché, el API route del cliente también se beneficia (mismo key).
+    const [metadata, insights] = await Promise.all([
+      fetchCanvasMetadata(publicId),
+      getCachedInsights(publicId, datePreset),
+    ]);
+
+    if (!metadata) {
       return { success: false, error: "Este Canvas no existe o ha expirado." };
     }
-
-    const { adAccountId, campaignIds, accessToken, clientName, selectedMetrics } = doc.data() as any;
-
-    if (!adAccountId || !campaignIds || !accessToken) {
-        return { success: false, error: "Datos de configuración incompletos." };
+    if (!insights) {
+      return { success: false, error: "Datos de configuración incompletos." };
     }
 
-    // 1. Obtener información general de las campañas (incluso si tienen 0 spend)
-    const allCampsRaw = await MetaApi.getCampaigns(adAccountId, accessToken, false); // activeOnly = false
-    const selectedCampaignsMeta = allCampsRaw.data?.filter((c: any) => campaignIds.includes(c.id)) || [];
-    
-    // Extraer métricas y mezclarlas
-    const campaignsRaw = await MetaApi.getCampaignInsights(adAccountId, accessToken, datePreset);
-    const selectedCampaignsInsights = selectedCampaignsMeta.map((camp: any) => {
-        const insight = campaignsRaw.data?.find((ins: any) => ins.campaign_id === camp.id);
-        return {
-            ...camp,
-            campaign_id: camp.id, // AdsMindMap espera esto
-            campaign_name: camp.name,
-            spend: insight?.spend || '0.00',
-            impressions: insight?.impressions || '0',
-            clicks: insight?.clicks || '0',
-            cpc: insight?.cpc || '0.00',
-            cpm: insight?.cpm || '0.00',
-            reach: insight?.reach || '0',
-            purchase_roas: insight?.purchase_roas,
-            actions: insight?.actions,
-            cost_per_action_type: insight?.cost_per_action_type
-        };
+    const { clientName, selectedMetrics, campaignIds, allCampsRaw, adSetsRaw, adsInfoRaw } = metadata;
+    const { campaignInsights, adsetInsights, adInsights } = insights;
+
+    // Merge campañas: filtrar las seleccionadas y combinar con sus insights
+    const selectedCampaignsMeta = allCampsRaw.filter((c: any) => campaignIds.includes(c.id));
+    const campaigns = selectedCampaignsMeta.map((camp: any) => {
+      const ins = campaignInsights.find((i: any) => i.campaign_id === camp.id);
+      return {
+        ...camp,
+        campaign_id: camp.id,
+        campaign_name: camp.name,
+        spend: ins?.spend || '0.00',
+        impressions: ins?.impressions || '0',
+        clicks: ins?.clicks || '0',
+        cpc: ins?.cpc || '0.00',
+        cpm: ins?.cpm || '0.00',
+        reach: ins?.reach || '0',
+        purchase_roas: ins?.purchase_roas,
+        actions: ins?.actions,
+        cost_per_action_type: ins?.cost_per_action_type,
+      };
     });
 
-    const adSetsRaw = await MetaApi.getAdSets(adAccountId, accessToken, campaignIds);
-    const adSetInsightsRaw = await MetaApi.getAdSetInsights(adAccountId, accessToken, datePreset, campaignIds);
-    
-    // Merge ad set insights with metadata
-    const adSetsMerged = adSetsRaw.data?.map((adset: any) => {
-        const insight = adSetInsightsRaw.data?.find((i: any) => i.adset_id === adset.id);
-        return {
-             ...adset,
-             adset_id: adset.id,
-             adset_name: adset.name,
-             spend: insight?.spend,
-             clicks: insight?.clicks,
-             impressions: insight?.impressions,
-             cpc: insight?.cpc,
-             cpm: insight?.cpm,
-             reach: insight?.reach,
-             purchase_roas: insight?.purchase_roas,
-             actions: insight?.actions,
-             cost_per_action_type: insight?.cost_per_action_type
-        };
-    }) || [];
-
-    const adsRaw = await MetaApi.getAdInsights(adAccountId, accessToken, datePreset, campaignIds);
-    const adsInfoRaw = await MetaApi.getAds(adAccountId, accessToken, campaignIds);
+    // Merge adsets: combinar metadata con insights
+    const adSets = adSetsRaw.map((adset: any) => {
+      const ins = adsetInsights.find((i: any) => i.adset_id === adset.id);
+      return {
+        ...adset,
+        adset_id: adset.id,
+        adset_name: adset.name,
+        spend: ins?.spend,
+        clicks: ins?.clicks,
+        impressions: ins?.impressions,
+        cpc: ins?.cpc,
+        cpm: ins?.cpm,
+        reach: ins?.reach,
+        purchase_roas: ins?.purchase_roas,
+        actions: ins?.actions,
+        cost_per_action_type: ins?.cost_per_action_type,
+      };
+    });
 
     return {
       success: true,
       clientName,
       selectedMetrics,
-      campaigns: selectedCampaignsInsights,
-      adSets: adSetsMerged, // Mapeado correctamente con insights
-      adsMetrics: adsRaw.data || [],
-      adsMetadata: adsInfoRaw.data || []
+      campaigns,
+      adSets,
+      adsMetrics: adInsights,
+      adsMetadata: adsInfoRaw,
     };
   } catch (err: any) {
     return { success: false, error: err.message };

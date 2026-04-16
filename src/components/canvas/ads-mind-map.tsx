@@ -1,13 +1,12 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { ReactFlow, Background, Controls, Edge, Node, Position, Handle, useNodesState, useEdgesState } from "@xyflow/react";
+import { useMemo, useState, useEffect, useCallback } from "react";
+import { ReactFlow, Background, Controls, Edge, Node } from "@xyflow/react";
 import '@xyflow/react/dist/style.css';
 
 import CampaignNode from "./nodes/campaign-node";
 import AdSetNode from "./nodes/adset-node";
 import AdNode from "./nodes/ad-node";
-import { getAdPreviewAction } from '@/actions/meta-actions';
 import { Activity, X, ChevronDown, ChevronRight, Target, Users, MousePointerClick, Calendar } from "lucide-react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
@@ -23,16 +22,29 @@ function useIsMobile(breakpoint = 768) {
   return isMobile;
 }
 
-// ─── Date selector (shared) ──────────────────────────────────────
-function DateSelector({ currentDatePreset, searchParams, pathname, router }: any) {
+// ─── Loading overlay ─────────────────────────────────────────────
+function InsightsLoadingOverlay() {
+  return (
+    <div className="absolute inset-0 z-30 bg-white/50 backdrop-blur-[2px] flex items-center justify-center pointer-events-none">
+      <div className="flex flex-col items-center gap-3 bg-white/90 border border-zinc-200 rounded-2xl px-8 py-5 shadow-lg">
+        <div className="w-6 h-6 border-2 border-zinc-300 border-t-zinc-800 rounded-full animate-spin" />
+        <span className="text-sm text-zinc-600 font-medium">Actualizando métricas…</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Date selector ───────────────────────────────────────────────
+function DateSelector({ currentDatePreset, onDateChange }: {
+  currentDatePreset: string;
+  onDateChange: (date: string) => void;
+}) {
   return (
     <select
       value={currentDatePreset.startsWith('{') ? 'custom' : currentDatePreset}
       onChange={(e) => {
         if (e.target.value !== 'custom') {
-          const params = new URLSearchParams(searchParams.toString());
-          params.set('date', e.target.value);
-          router.push(`${pathname}?${params.toString()}`);
+          onDateChange(e.target.value);
         }
       }}
       className="bg-transparent focus:outline-none cursor-pointer text-sm font-medium text-zinc-700 w-full"
@@ -78,8 +90,7 @@ function CarouselImage({ src, index }: { src: string; index: number }) {
   );
 }
 
-// ─── Ad Detail Modal (shared) ────────────────────────────────────
-
+// ─── Ad Detail Modal ─────────────────────────────────────────────
 function AdModal({ openedAd, onClose, selectedMetrics }: { openedAd: any, onClose: () => void, selectedMetrics: string[] }) {
   const ad = openedAd.ad;
   const metrics = openedAd.metrics;
@@ -160,7 +171,6 @@ function AdModal({ openedAd, onClose, selectedMetrics }: { openedAd: any, onClos
               </div>
               <div className="flex gap-3 overflow-x-auto pb-2 snap-x -mx-1 px-1">
                 {childAttachments.map((item: any, i: number) => {
-                  // Meta puede devolver la URL en distintos campos según el tipo de anuncio
                   const imgSrc = item.image_url || item.picture || null;
                   return (
                     <div key={i} className="min-w-[80%] shrink-0 snap-center">
@@ -277,7 +287,7 @@ function AdModal({ openedAd, onClose, selectedMetrics }: { openedAd: any, onClos
 }
 
 // ─── Mobile List View ────────────────────────────────────────────
-function MobileListView({ clientName, campaigns, adSets, adsMetrics, adsMetadata, selectedMetrics, currentDatePreset, searchParams, pathname, router }: any) {
+function MobileListView({ clientName, campaigns, adSets, adsMetrics, adsMetadata, selectedMetrics, currentDatePreset, onDateChange, isLoadingInsights }: any) {
   const [openedAd, setOpenedAd] = useState<any | null>(null);
   const [expandedCamps, setExpandedCamps] = useState<Set<string>>(new Set());
   const [expandedAdsets, setExpandedAdsets] = useState<Set<string>>(new Set());
@@ -294,7 +304,10 @@ function MobileListView({ clientName, campaigns, adSets, adsMetrics, adsMetadata
   });
 
   return (
-    <div className="flex flex-col min-h-dvh bg-[#fafafa]">
+    <div className="flex flex-col min-h-dvh bg-[#fafafa] relative">
+      {/* Loading overlay */}
+      {isLoadingInsights && <InsightsLoadingOverlay />}
+
       {/* Sticky header */}
       <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-zinc-100 px-4 pt-safe-top">
         <div className="pt-4 pb-3">
@@ -303,7 +316,7 @@ function MobileListView({ clientName, campaigns, adSets, adsMetrics, adsMetadata
         </div>
         <div className="pb-3 flex items-center gap-2 bg-zinc-50 rounded-xl px-3 py-2 border border-zinc-200">
           <Calendar className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-          <DateSelector currentDatePreset={currentDatePreset} searchParams={searchParams} pathname={pathname} router={router} />
+          <DateSelector currentDatePreset={currentDatePreset} onDateChange={onDateChange} />
         </div>
         <div className="h-3" />
       </div>
@@ -423,12 +436,14 @@ function MobileListView({ clientName, campaigns, adSets, adsMetrics, adsMetadata
 }
 
 // ─── Desktop Canvas View ─────────────────────────────────────────
-function DesktopCanvasView({ clientName, campaigns, adSets, adsMetrics, adsMetadata, selectedMetrics, currentDatePreset, searchParams, pathname, router }: any) {
+function DesktopCanvasView({ clientName, campaigns, adSets, adsMetrics, adsMetadata, selectedMetrics, currentDatePreset, onDateChange, isLoadingInsights }: any) {
   const nodeTypes = useMemo(() => ({
     campaign: CampaignNode,
     adset: AdSetNode,
     ad: AdNode
   }), []);
+
+  const [openedAd, setOpenedAd] = useState<any | null>(null);
 
   const buildGraph = () => {
     const nodes: Node[] = [];
@@ -511,10 +526,12 @@ function DesktopCanvasView({ clientName, campaigns, adSets, adsMetrics, adsMetad
   };
 
   const { nodes: initialNodes, edges: initialEdges } = useMemo(buildGraph, [campaigns, adSets, adsMetadata, adsMetrics]);
-  const [openedAd, setOpenedAd] = useState<any | null>(null);
 
   return (
     <div className="w-full h-full relative">
+      {/* Loading overlay */}
+      {isLoadingInsights && <InsightsLoadingOverlay />}
+
       {/* Floating header */}
       <div className="absolute top-6 left-6 z-10 pointer-events-auto flex items-center gap-6">
         <div>
@@ -522,7 +539,7 @@ function DesktopCanvasView({ clientName, campaigns, adSets, adsMetrics, adsMetad
           <p className="text-sm font-medium text-zinc-500 drop-shadow-sm">Rendimiento en Tiempo Real</p>
         </div>
         <div className="bg-white/90 backdrop-blur border border-zinc-200 rounded-xl px-3 py-1.5 shadow-sm text-sm font-medium text-zinc-700 flex items-center gap-2">
-          <DateSelector currentDatePreset={currentDatePreset} searchParams={searchParams} pathname={pathname} router={router} />
+          <DateSelector currentDatePreset={currentDatePreset} onDateChange={onDateChange} />
           {currentDatePreset.startsWith('{') && (
             <div className="flex items-center gap-2 border-l border-zinc-200 pl-2 ml-1">
               <input type="date" id="custom-start" className="bg-transparent border-b border-zinc-300 focus:outline-none text-xs" />
@@ -533,10 +550,7 @@ function DesktopCanvasView({ clientName, campaigns, adSets, adsMetrics, adsMetad
                   const start = (document.getElementById('custom-start') as HTMLInputElement).value;
                   const end = (document.getElementById('custom-end') as HTMLInputElement).value;
                   if (start && end) {
-                    const val = JSON.stringify({ since: start, until: end });
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.set('date', val);
-                    router.push(`${pathname}?${params.toString()}`);
+                    onDateChange(JSON.stringify({ since: start, until: end }));
                   }
                 }}
                 className="bg-black text-white px-2 py-1 rounded text-xs ml-1 hover:bg-zinc-800"
@@ -566,13 +580,131 @@ function DesktopCanvasView({ clientName, campaigns, adSets, adsMetrics, adsMetad
 }
 
 // ─── Main Export ─────────────────────────────────────────────────
-export function AdsMindMap({ clientName, selectedMetrics = ['spend', 'clicks', 'impressions', 'cpc'], campaigns, adSets, adsMetrics, adsMetadata, currentDatePreset = 'maximum' }: any) {
+export function AdsMindMap({
+  publicId,
+  clientName,
+  selectedMetrics = ['spend', 'clicks', 'impressions', 'cpc'],
+  campaigns: initialCampaigns,
+  adSets: initialAdSets,
+  adsMetrics: initialAdsMetrics,
+  adsMetadata,
+  currentDatePreset: initialDatePreset = 'maximum',
+}: any) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const isMobile = useIsMobile();
 
-  const sharedProps = { clientName, campaigns, adSets, adsMetrics, adsMetadata, selectedMetrics, currentDatePreset, searchParams, pathname, router };
+  // ── Estado de datos (solo insights cambian con la fecha) ─────────
+  const [campaigns, setCampaigns] = useState(initialCampaigns);
+  const [adSets, setAdSets] = useState(initialAdSets);
+  const [adsMetrics, setAdsMetrics] = useState(initialAdsMetrics);
+  const [currentDatePreset, setCurrentDatePreset] = useState(initialDatePreset);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+
+  // ── Metadata estable (no depende de fecha) ───────────────────────
+  // Se extrae una sola vez de los props iniciales del servidor
+  const campaignsMeta = useMemo(() =>
+    initialCampaigns.map((c: any) => ({
+      id: c.campaign_id || c.id,
+      campaign_id: c.campaign_id,
+      campaign_name: c.campaign_name,
+      name: c.campaign_name,
+      objective: c.objective,
+      status: c.status,
+      start_time: c.start_time,
+      stop_time: c.stop_time,
+    })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  []);
+
+  const adSetsMeta = useMemo(() =>
+    initialAdSets.map((a: any) => ({
+      id: a.id || a.adset_id,
+      adset_id: a.adset_id || a.id,
+      adset_name: a.adset_name || a.name,
+      name: a.name || a.adset_name,
+      campaign_id: a.campaign_id,
+      status: a.status,
+      daily_budget: a.daily_budget,
+      lifetime_budget: a.lifetime_budget,
+      optimization_goal: a.optimization_goal,
+      targeting: a.targeting,
+    })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  []);
+
+  // ── Cambio de fecha: solo fetches de insights ────────────────────
+  const handleDateChange = useCallback(async (newDatePreset: string) => {
+    // Actualizar URL sin navegación (para que el link sea compartible)
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('date', newDatePreset);
+    router.replace(`${pathname}?${params.toString()}`);
+    setCurrentDatePreset(newDatePreset);
+
+    // Solo 3 endpoints — sin recargar la página
+    setIsLoadingInsights(true);
+    try {
+      const res = await fetch(
+        `/api/canvas/${publicId}/insights?date=${encodeURIComponent(newDatePreset)}`
+      );
+      if (!res.ok) throw new Error('Error al cargar datos');
+      const data = await res.json();
+
+      // Merge insights con la metadata estable
+      const newCampaigns = campaignsMeta.map((c: any) => {
+        const ins = data.campaignInsights.find((i: any) => i.campaign_id === c.campaign_id);
+        return {
+          ...c,
+          spend: ins?.spend || '0.00',
+          impressions: ins?.impressions || '0',
+          clicks: ins?.clicks || '0',
+          cpc: ins?.cpc || '0.00',
+          cpm: ins?.cpm || '0.00',
+          reach: ins?.reach || '0',
+          purchase_roas: ins?.purchase_roas,
+          actions: ins?.actions,
+          cost_per_action_type: ins?.cost_per_action_type,
+        };
+      });
+
+      const newAdSets = adSetsMeta.map((a: any) => {
+        const ins = data.adsetInsights.find((i: any) => i.adset_id === a.adset_id);
+        return {
+          ...a,
+          spend: ins?.spend,
+          clicks: ins?.clicks,
+          impressions: ins?.impressions,
+          cpc: ins?.cpc,
+          cpm: ins?.cpm,
+          reach: ins?.reach,
+          purchase_roas: ins?.purchase_roas,
+          actions: ins?.actions,
+          cost_per_action_type: ins?.cost_per_action_type,
+        };
+      });
+
+      setCampaigns(newCampaigns);
+      setAdSets(newAdSets);
+      setAdsMetrics(data.adInsights);
+    } catch (err) {
+      console.error('[AdsMindMap] Error fetching insights:', err);
+    } finally {
+      setIsLoadingInsights(false);
+    }
+  }, [publicId, campaignsMeta, adSetsMeta, pathname, searchParams, router]);
+
+  const sharedProps = {
+    clientName,
+    campaigns,
+    adSets,
+    adsMetrics,
+    adsMetadata,
+    selectedMetrics,
+    currentDatePreset,
+    onDateChange: handleDateChange,
+    isLoadingInsights,
+  };
 
   if (isMobile) {
     return <MobileListView {...sharedProps} />;
